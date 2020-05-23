@@ -8,7 +8,7 @@ export default {
       const size = match[0].length;
       // Need to defer this action https://github.com/quilljs/quill/issues/1134
       setTimeout(() => {
-        quill.formatLine(selection.index, 0, "header", size - 1);
+        quill.formatLine(selection.index, 0, "header", size);
         quill.deleteText(selection.index - size, size);
       }, 0);
     },
@@ -142,7 +142,7 @@ export default {
       setTimeout(() => {
         quill.deleteText(startIndex, text.length);
 
-        quill.insertEmbed(startIndex + 1, "hr", true, Quill.sources.USER);
+        quill.insertEmbed(startIndex + 1, "divider", true, Quill.sources.USER);
         quill.insertText(startIndex + 2, "\n", Quill.sources.SILENT);
         quill.setSelection(startIndex + 2, Quill.sources.SILENT);
       }, 0);

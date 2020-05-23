@@ -73,7 +73,7 @@
 var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
 /*!
- * Quill Editor v1.3.6
+ * Quill Editor v1.3.7
  * https://quilljs.com/
  * Copyright (c) 2014, Jason Chen
  * Copyright (c) 2013, salesforce.com
@@ -517,7 +517,19 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
       Delta.prototype.compose = function (other) {
         var thisIter = op.iterator(this.ops);
         var otherIter = op.iterator(other.ops);
-        var delta = new Delta();
+        var ops = [];
+        var firstOther = otherIter.peek();
+        if (firstOther != null && typeof firstOther.retain === 'number' && firstOther.attributes == null) {
+          var firstLeft = firstOther.retain;
+          while (thisIter.peekType() === 'insert' && thisIter.peekLength() <= firstLeft) {
+            firstLeft -= thisIter.peekLength();
+            ops.push(thisIter.next());
+          }
+          if (firstOther.retain - firstLeft > 0) {
+            otherIter.next(firstOther.retain - firstLeft);
+          }
+        }
+        var delta = new Delta(ops);
         while (thisIter.hasNext() || otherIter.hasNext()) {
           if (otherIter.peekType() === 'insert') {
             delta.push(otherIter.next());
@@ -538,6 +550,13 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
               var attributes = op.attributes.compose(thisOp.attributes, otherOp.attributes, typeof thisOp.retain === 'number');
               if (attributes) newOp.attributes = attributes;
               delta.push(newOp);
+
+              // Optimization if rest of other is just retain
+              if (!otherIter.hasNext() && equal(delta.ops[delta.ops.length - 1], newOp)) {
+                var rest = new Delta(thisIter.rest());
+                return delta.concat(rest).chop();
+              }
+
               // Other op should be delete, we could be an insert or retain
               // Insert + delete cancels out
             } else if (typeof otherOp['delete'] === 'number' && typeof thisOp.retain === 'number') {
@@ -693,6 +712,8 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
 
       var hasOwn = Object.prototype.hasOwnProperty;
       var toStr = Object.prototype.toString;
+      var defineProperty = Object.defineProperty;
+      var gOPD = Object.getOwnPropertyDescriptor;
 
       var isArray = function isArray(arr) {
         if (typeof Array.isArray === 'function') {
@@ -722,6 +743,35 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
         return typeof key === 'undefined' || hasOwn.call(obj, key);
       };
 
+      // If name is '__proto__', and Object.defineProperty is available, define __proto__ as an own property on target
+      var setProperty = function setProperty(target, options) {
+        if (defineProperty && options.name === '__proto__') {
+          defineProperty(target, options.name, {
+            enumerable: true,
+            configurable: true,
+            value: options.newValue,
+            writable: true
+          });
+        } else {
+          target[options.name] = options.newValue;
+        }
+      };
+
+      // Return undefined instead of __proto__ if '__proto__' is not an own property
+      var getProperty = function getProperty(obj, name) {
+        if (name === '__proto__') {
+          if (!hasOwn.call(obj, name)) {
+            return void 0;
+          } else if (gOPD) {
+            // In early versions of node, obj['__proto__'] is buggy when obj has
+            // __proto__ as an own property. Object.getOwnPropertyDescriptor() works.
+            return gOPD(obj, name).value;
+          }
+        }
+
+        return obj[name];
+      };
+
       module.exports = function extend() {
         var options, name, src, copy, copyIsArray, clone;
         var target = arguments[0];
@@ -746,8 +796,8 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
           if (options != null) {
             // Extend the base object
             for (name in options) {
-              src = target[name];
-              copy = options[name];
+              src = getProperty(target, name);
+              copy = getProperty(options, name);
 
               // Prevent never-ending loop
               if (target !== copy) {
@@ -761,11 +811,11 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
                   }
 
                   // Never move original objects, clone them
-                  target[name] = extend(deep, clone, copy);
+                  setProperty(target, { name: name, newValue: extend(deep, clone, copy) });
 
                   // Don't bring in undefined values
                 } else if (typeof copy !== 'undefined') {
-                  target[name] = copy;
+                  setProperty(target, { name: name, newValue: copy });
                 }
               }
             }
@@ -1692,7 +1742,7 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
       Quill.events = _emitter4.default.events;
       Quill.sources = _emitter4.default.sources;
       // eslint-disable-next-line no-undef
-      Quill.version = false ? 'dev' : "1.3.6";
+      Quill.version = false ? 'dev' : "1.3.7";
 
       Quill.imports = {
         'delta': _quillDelta2.default,
@@ -4119,8 +4169,8 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
           return [this.parent.domNode, offset];
         };
         LeafBlot.prototype.value = function () {
-          return _a = {}, _a[this.statics.blotName] = this.statics.value(this.domNode) || true, _a;
           var _a;
+          return _a = {}, _a[this.statics.blotName] = this.statics.value(this.domNode) || true, _a;
         };
         LeafBlot.scope = Registry.Scope.INLINE_BLOT;
         return LeafBlot;
@@ -4267,6 +4317,22 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
         return 'retain';
       };
 
+      Iterator.prototype.rest = function () {
+        if (!this.hasNext()) {
+          return [];
+        } else if (this.offset === 0) {
+          return this.ops.slice(this.index);
+        } else {
+          var offset = this.offset;
+          var index = this.index;
+          var next = this.next();
+          var rest = this.ops.slice(this.index);
+          this.offset = offset;
+          this.index = index;
+          return [next].concat(rest);
+        }
+      };
+
       module.exports = lib;
 
       /***/
@@ -4376,7 +4442,13 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
             } else if (clone.__isDate(parent)) {
               child = new Date(parent.getTime());
             } else if (useBuffer && Buffer.isBuffer(parent)) {
-              child = new Buffer(parent.length);
+              if (Buffer.allocUnsafe) {
+                // Node.js >= 4.5.0
+                child = Buffer.allocUnsafe(parent.length);
+              } else {
+                // Older Node.js versions
+                child = new Buffer(parent.length);
+              }
               parent.copy(child);
               return child;
             } else if (_instanceof(parent, Error)) {
@@ -5980,6 +6052,7 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
             var node = _get(Link.__proto__ || Object.getPrototypeOf(Link), 'create', this).call(this, value);
             value = this.sanitize(value);
             node.setAttribute('href', value);
+            node.setAttribute('rel', 'noopener noreferrer');
             node.setAttribute('target', '_blank');
             return node;
           }
@@ -11053,7 +11126,7 @@ var _typeof2 = typeof Symbol === "function" && typeof Symbol.iterator === "symbo
         return SnowTooltip;
       }(_base.BaseTooltip);
 
-      SnowTooltip.TEMPLATE = ['<a class="ql-preview" target="_blank" href="about:blank"></a>', '<input type="text" data-formula="e=mc^2" data-link="https://quilljs.com" data-video="Embed URL">', '<a class="ql-action"></a>', '<a class="ql-remove"></a>'].join('');
+      SnowTooltip.TEMPLATE = ['<a class="ql-preview" rel="noopener noreferrer" target="_blank" href="about:blank"></a>', '<input type="text" data-formula="e=mc^2" data-link="https://quilljs.com" data-video="Embed URL">', '<a class="ql-action"></a>', '<a class="ql-remove"></a>'].join('');
 
       exports.default = SnowTheme;
 
@@ -13060,7 +13133,7 @@ new _quill2.default('#editor', {
 /* WEBPACK VAR INJECTION */(function(global) {/*!
  * The buffer module from node.js, for the browser.
  *
- * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @author   Feross Aboukhadijeh <http://feross.org>
  * @license  MIT
  */
 /* eslint-disable no-proto */
@@ -14847,54 +14920,70 @@ for (var i = 0, len = code.length; i < len; ++i) {
   revLookup[code.charCodeAt(i)] = i;
 }
 
+// Support decoding URL-safe base64 strings, as Node.js does.
+// See: https://en.wikipedia.org/wiki/Base64#URL_applications
 revLookup['-'.charCodeAt(0)] = 62;
 revLookup['_'.charCodeAt(0)] = 63;
 
-function placeHoldersCount(b64) {
+function getLens(b64) {
   var len = b64.length;
+
   if (len % 4 > 0) {
     throw new Error('Invalid string. Length must be a multiple of 4');
   }
 
-  // the number of equal signs (place holders)
-  // if there are two placeholders, than the two characters before it
-  // represent one byte
-  // if there is only one, then the three characters before it represent 2 bytes
-  // this is just a cheap hack to not do indexOf twice
-  return b64[len - 2] === '=' ? 2 : b64[len - 1] === '=' ? 1 : 0;
+  // Trim off extra bytes after placeholder bytes are found
+  // See: https://github.com/beatgammit/base64-js/issues/42
+  var validLen = b64.indexOf('=');
+  if (validLen === -1) validLen = len;
+
+  var placeHoldersLen = validLen === len ? 0 : 4 - validLen % 4;
+
+  return [validLen, placeHoldersLen];
 }
 
+// base64 is 4/3 + up to two characters of the original data
 function byteLength(b64) {
-  // base64 is 4/3 + up to two characters of the original data
-  return b64.length * 3 / 4 - placeHoldersCount(b64);
+  var lens = getLens(b64);
+  var validLen = lens[0];
+  var placeHoldersLen = lens[1];
+  return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
+}
+
+function _byteLength(b64, validLen, placeHoldersLen) {
+  return (validLen + placeHoldersLen) * 3 / 4 - placeHoldersLen;
 }
 
 function toByteArray(b64) {
-  var i, l, tmp, placeHolders, arr;
-  var len = b64.length;
-  placeHolders = placeHoldersCount(b64);
+  var tmp;
+  var lens = getLens(b64);
+  var validLen = lens[0];
+  var placeHoldersLen = lens[1];
 
-  arr = new Arr(len * 3 / 4 - placeHolders);
+  var arr = new Arr(_byteLength(b64, validLen, placeHoldersLen));
+
+  var curByte = 0;
 
   // if there are placeholders, only get up to the last complete 4 chars
-  l = placeHolders > 0 ? len - 4 : len;
+  var len = placeHoldersLen > 0 ? validLen - 4 : validLen;
 
-  var L = 0;
-
-  for (i = 0; i < l; i += 4) {
+  var i;
+  for (i = 0; i < len; i += 4) {
     tmp = revLookup[b64.charCodeAt(i)] << 18 | revLookup[b64.charCodeAt(i + 1)] << 12 | revLookup[b64.charCodeAt(i + 2)] << 6 | revLookup[b64.charCodeAt(i + 3)];
-    arr[L++] = tmp >> 16 & 0xFF;
-    arr[L++] = tmp >> 8 & 0xFF;
-    arr[L++] = tmp & 0xFF;
+    arr[curByte++] = tmp >> 16 & 0xFF;
+    arr[curByte++] = tmp >> 8 & 0xFF;
+    arr[curByte++] = tmp & 0xFF;
   }
 
-  if (placeHolders === 2) {
+  if (placeHoldersLen === 2) {
     tmp = revLookup[b64.charCodeAt(i)] << 2 | revLookup[b64.charCodeAt(i + 1)] >> 4;
-    arr[L++] = tmp & 0xFF;
-  } else if (placeHolders === 1) {
+    arr[curByte++] = tmp & 0xFF;
+  }
+
+  if (placeHoldersLen === 1) {
     tmp = revLookup[b64.charCodeAt(i)] << 10 | revLookup[b64.charCodeAt(i + 1)] << 4 | revLookup[b64.charCodeAt(i + 2)] >> 2;
-    arr[L++] = tmp >> 8 & 0xFF;
-    arr[L++] = tmp & 0xFF;
+    arr[curByte++] = tmp >> 8 & 0xFF;
+    arr[curByte++] = tmp & 0xFF;
   }
 
   return arr;
@@ -14908,7 +14997,7 @@ function encodeChunk(uint8, start, end) {
   var tmp;
   var output = [];
   for (var i = start; i < end; i += 3) {
-    tmp = (uint8[i] << 16) + (uint8[i + 1] << 8) + uint8[i + 2];
+    tmp = (uint8[i] << 16 & 0xFF0000) + (uint8[i + 1] << 8 & 0xFF00) + (uint8[i + 2] & 0xFF);
     output.push(tripletToBase64(tmp));
   }
   return output.join('');
@@ -14918,7 +15007,6 @@ function fromByteArray(uint8) {
   var tmp;
   var len = uint8.length;
   var extraBytes = len % 3; // if we have 1 byte left, pad 2 bytes
-  var output = '';
   var parts = [];
   var maxChunkLength = 16383; // must be multiple of 3
 
@@ -14930,18 +15018,11 @@ function fromByteArray(uint8) {
   // pad the end with zeros, but make sure to not forget the extra bytes
   if (extraBytes === 1) {
     tmp = uint8[len - 1];
-    output += lookup[tmp >> 2];
-    output += lookup[tmp << 4 & 0x3F];
-    output += '==';
+    parts.push(lookup[tmp >> 2] + lookup[tmp << 4 & 0x3F] + '==');
   } else if (extraBytes === 2) {
     tmp = (uint8[len - 2] << 8) + uint8[len - 1];
-    output += lookup[tmp >> 10];
-    output += lookup[tmp >> 4 & 0x3F];
-    output += lookup[tmp << 2 & 0x3F];
-    output += '=';
+    parts.push(lookup[tmp >> 10] + lookup[tmp >> 4 & 0x3F] + lookup[tmp << 2 & 0x3F] + '=');
   }
-
-  parts.push(output);
 
   return parts.join('');
 }
@@ -15219,6 +15300,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       // THE SOFTWARE.
       //
 
+
       var _quill = __webpack_require__(0);
 
       var _quill2 = _interopRequireDefault(_quill);
@@ -15226,6 +15308,10 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       var _hr = __webpack_require__(2);
 
       var _hr2 = _interopRequireDefault(_hr);
+
+      var _formats = __webpack_require__(3);
+
+      var _formats2 = _interopRequireDefault(_formats);
 
       function _interopRequireDefault(obj) {
         return obj && obj.__esModule ? obj : { default: obj };
@@ -15237,7 +15323,9 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         }
       }
 
-      _quill2.default.register('formats/horizontal', _hr2.default);
+      _quill2.default.register("formats/horizontal", _hr2.default);
+
+      var allRules = ["header", "blockquote", "code-block", "bolditalic", "bold", "italic", "strikethrough", "code", "hr", "plus-ul", "image", "link"];
 
       var MarkdownShortcuts = function () {
         function MarkdownShortcuts(quill, options) {
@@ -15248,195 +15336,22 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
           this.quill = quill;
           this.options = options;
 
-          this.ignoreTags = ['PRE'];
-          this.matches = [{
-            name: 'header',
-            pattern: /^(#){1,6}\s/g,
-            action: function action(text, selection, pattern) {
-              var match = pattern.exec(text);
-              if (!match) return;
-              var size = match[0].length;
-              // Need to defer this action https://github.com/quilljs/quill/issues/1134
-              setTimeout(function () {
-                _this.quill.formatLine(selection.index, 0, 'header', size - 1);
-                _this.quill.deleteText(selection.index - size, size);
-              }, 0);
-            }
-          }, {
-            name: 'blockquote',
-            pattern: /^(>)\s/g,
-            action: function action(text, selection) {
-              // Need to defer this action https://github.com/quilljs/quill/issues/1134
-              setTimeout(function () {
-                _this.quill.formatLine(selection.index, 1, 'blockquote', true);
-                _this.quill.deleteText(selection.index - 2, 2);
-              }, 0);
-            }
-          }, {
-            name: 'code-block',
-            pattern: /^`{3}(?:\s|\n)/g,
-            action: function action(text, selection) {
-              // Need to defer this action https://github.com/quilljs/quill/issues/1134
-              setTimeout(function () {
-                _this.quill.formatLine(selection.index, 1, 'code-block', true);
-                _this.quill.deleteText(selection.index - 4, 4);
-              }, 0);
-            }
-          }, {
-            name: 'bolditalic',
-            pattern: /(?:\*|_){3}(.+?)(?:\*|_){3}/g,
-            action: function action(text, selection, pattern, lineStart) {
-              var match = pattern.exec(text);
+          this.ignoreTags = ["PRE"];
+          this.matches = [];
 
-              var annotatedText = match[0];
-              var matchedText = match[1];
-              var startIndex = lineStart + match.index;
+          var includeRules = this.options.includeFormats || allRules;
 
-              if (text.match(/^([*_ \n]+)$/g)) return;
-
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, annotatedText.length);
-                _this.quill.insertText(startIndex, matchedText, { bold: true, italic: true });
-                _this.quill.format('bold', false);
-              }, 0);
-            }
-          }, {
-            name: 'bold',
-            pattern: /(?:\*|_){2}(.+?)(?:\*|_){2}/g,
-            action: function action(text, selection, pattern, lineStart) {
-              var match = pattern.exec(text);
-
-              var annotatedText = match[0];
-              var matchedText = match[1];
-              var startIndex = lineStart + match.index;
-
-              if (text.match(/^([*_ \n]+)$/g)) return;
-
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, annotatedText.length);
-                _this.quill.insertText(startIndex, matchedText, { bold: true });
-                _this.quill.format('bold', false);
-              }, 0);
-            }
-          }, {
-            name: 'italic',
-            pattern: /(?:\*|_){1}(.+?)(?:\*|_){1}/g,
-            action: function action(text, selection, pattern, lineStart) {
-              var match = pattern.exec(text);
-
-              var annotatedText = match[0];
-              var matchedText = match[1];
-              var startIndex = lineStart + match.index;
-
-              if (text.match(/^([*_ \n]+)$/g)) return;
-
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, annotatedText.length);
-                _this.quill.insertText(startIndex, matchedText, { italic: true });
-                _this.quill.format('italic', false);
-              }, 0);
-            }
-          }, {
-            name: 'strikethrough',
-            pattern: /(?:~~)(.+?)(?:~~)/g,
-            action: function action(text, selection, pattern, lineStart) {
-              var match = pattern.exec(text);
-
-              var annotatedText = match[0];
-              var matchedText = match[1];
-              var startIndex = lineStart + match.index;
-
-              if (text.match(/^([*_ \n]+)$/g)) return;
-
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, annotatedText.length);
-                _this.quill.insertText(startIndex, matchedText, { strike: true });
-                _this.quill.format('strike', false);
-              }, 0);
-            }
-          }, {
-            name: 'code',
-            pattern: /(?:`)(.+?)(?:`)/g,
-            action: function action(text, selection, pattern, lineStart) {
-              var match = pattern.exec(text);
-
-              var annotatedText = match[0];
-              var matchedText = match[1];
-              var startIndex = lineStart + match.index;
-
-              if (text.match(/^([*_ \n]+)$/g)) return;
-
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, annotatedText.length);
-                _this.quill.insertText(startIndex, matchedText, { code: true });
-                _this.quill.format('code', false);
-                _this.quill.insertText(_this.quill.getSelection(), ' ');
-              }, 0);
-            }
-          }, {
-            name: 'hr',
-            pattern: /^([-*]\s?){3}/g,
-            action: function action(text, selection) {
-              var startIndex = selection.index - text.length;
-              setTimeout(function () {
-                _this.quill.deleteText(startIndex, text.length);
-
-                _this.quill.insertEmbed(startIndex + 1, 'hr', true, _quill2.default.sources.USER);
-                _this.quill.insertText(startIndex + 2, "\n", _quill2.default.sources.SILENT);
-                _this.quill.setSelection(startIndex + 2, _quill2.default.sources.SILENT);
-              }, 0);
-            }
-          }, {
-            name: 'asterisk-ul',
-            // Quill 1.3.5 already treat * as another trigger for bullet lists
-            pattern: /^\+\s$/g,
-            action: function action(text, selection, pattern) {
-              setTimeout(function () {
-                _this.quill.formatLine(selection.index, 1, 'list', 'unordered');
-                _this.quill.deleteText(selection.index - 2, 2);
-              }, 0);
-            }
-          }, {
-            name: 'image',
-            pattern: /(?:!\[(.+?)\])(?:\((.+?)\))/g,
-            action: function action(text, selection, pattern) {
-              var startIndex = text.search(pattern);
-              var matchedText = text.match(pattern)[0];
-              // const hrefText = text.match(/(?:!\[(.*?)\])/g)[0]
-              var hrefLink = text.match(/(?:\((.*?)\))/g)[0];
-              var start = selection.index - matchedText.length - 1;
-              if (startIndex !== -1) {
-                setTimeout(function () {
-                  _this.quill.deleteText(start, matchedText.length);
-                  _this.quill.insertEmbed(start, 'image', hrefLink.slice(1, hrefLink.length - 1));
-                }, 0);
-              }
-            }
-          }, {
-            name: 'link',
-            pattern: /(?:\[(.+?)\])(?:\((.+?)\))/g,
-            action: function action(text, selection, pattern) {
-              var startIndex = text.search(pattern);
-              var matchedText = text.match(pattern)[0];
-              var hrefText = text.match(/(?:\[(.*?)\])/g)[0];
-              var hrefLink = text.match(/(?:\((.*?)\))/g)[0];
-              var start = selection.index - matchedText.length - 1;
-              if (startIndex !== -1) {
-                setTimeout(function () {
-                  _this.quill.deleteText(start, matchedText.length);
-                  _this.quill.insertText(start, hrefText.slice(1, hrefText.length - 1), 'link', hrefLink.slice(1, hrefLink.length - 1));
-                }, 0);
-              }
-            }
-          }];
+          includeRules.forEach(function (format) {
+            _this.matches.push(_formats2.default[format]);
+          });
 
           // Handler that looks for insert deltas that match specific characters
-          this.quill.on('text-change', function (delta, oldContents, source) {
+          this.quill.on("text-change", function (delta, oldContents, source) {
             for (var i = 0; i < delta.ops.length; i++) {
-              if (delta.ops[i].hasOwnProperty('insert')) {
-                if (delta.ops[i].insert === ' ') {
+              if (delta.ops[i].hasOwnProperty("insert")) {
+                if (delta.ops[i].insert === " ") {
                   _this.onSpace();
-                } else if (delta.ops[i].insert === '\n') {
+                } else if (delta.ops[i].insert === "\n") {
                   _this.onEnter();
                 }
               }
@@ -15445,12 +15360,12 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         }
 
         _createClass(MarkdownShortcuts, [{
-          key: 'isValid',
+          key: "isValid",
           value: function isValid(text, tagName) {
-            return typeof text !== 'undefined' && text && this.ignoreTags.indexOf(tagName) === -1;
+            return typeof text !== "undefined" && text && this.ignoreTags.indexOf(tagName) === -1;
           }
         }, {
-          key: 'onSpace',
+          key: "onSpace",
           value: function onSpace() {
             var selection = this.quill.getSelection();
             if (!selection) return;
@@ -15474,7 +15389,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                   var matchedText = text.match(match.pattern);
                   if (matchedText) {
                     // We need to replace only matched text not the whole line
-                    match.action(text, selection, match.pattern, lineStart);
+                    match.action(this.quill, text, selection, match.pattern, lineStart);
                     return;
                   }
                 }
@@ -15495,7 +15410,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
             }
           }
         }, {
-          key: 'onEnter',
+          key: "onEnter",
           value: function onEnter() {
             var selection = this.quill.getSelection();
             if (!selection) return;
@@ -15505,7 +15420,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
                 line = _quill$getLine4[0],
                 offset = _quill$getLine4[1];
 
-            var text = line.domNode.textContent + ' ';
+            var text = line.domNode.textContent + " ";
             var lineStart = selection.index - offset;
             selection.length = selection.index++;
             if (this.isValid(text, line.domNode.tagName)) {
@@ -15519,7 +15434,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
                   var matchedText = text.match(match.pattern);
                   if (matchedText) {
-                    match.action(text, selection, match.pattern, lineStart);
+                    match.action(this.quill, text, selection, match.pattern, lineStart);
                     return;
                   }
                 }
@@ -15545,7 +15460,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       }();
 
       if (window.Quill) {
-        window.Quill.register('modules/markdownShortcuts', MarkdownShortcuts);
+        window.Quill.register("modules/markdownShortcuts", MarkdownShortcuts);
       }
 
       module.exports = MarkdownShortcuts;
@@ -15605,6 +15520,213 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       HorizontalRule.tagName = 'hr';
 
       exports.default = HorizontalRule;
+
+      /***/
+    },
+    /* 3 */
+    /***/function (module, exports, __webpack_require__) {
+
+      "use strict";
+
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = {
+        header: {
+          name: "header",
+          pattern: /^(#){1,6}\s/g,
+          action: function action(quill, text, selection, pattern) {
+            var match = pattern.exec(text);
+            if (!match) return;
+            var size = match[0].length;
+            // Need to defer this action https://github.com/quilljs/quill/issues/1134
+            setTimeout(function () {
+              quill.formatLine(selection.index, 0, "header", size - 1);
+              quill.deleteText(selection.index - size, size);
+            }, 0);
+          }
+        },
+        blockquote: {
+          name: "blockquote",
+          pattern: /^(>)\s/g,
+          action: function action(quill, text, selection) {
+            // Need to defer this action https://github.com/quilljs/quill/issues/1134
+            setTimeout(function () {
+              quill.formatLine(selection.index, 1, "blockquote", true);
+              quill.deleteText(selection.index - 2, 2);
+            }, 0);
+          }
+        },
+        "code-block": {
+          name: "code-block",
+          pattern: /^`{3}(?:\s|\n)/g,
+          action: function action(text, selection) {
+            // Need to defer this action https://github.com/quilljs/quill/issues/1134
+            setTimeout(function () {
+              quill.formatLine(selection.index, 1, "code-block", true);
+              quill.deleteText(selection.index - 4, 4);
+            }, 0);
+          }
+        },
+        bolditalic: {
+          name: "bolditalic",
+          pattern: /(?:\*|_){3}(.+?)(?:\*|_){3}/g,
+          action: function action(quill, text, selection, pattern, lineStart) {
+            var match = pattern.exec(text);
+
+            var annotatedText = match[0];
+            var matchedText = match[1];
+            var startIndex = lineStart + match.index;
+
+            if (text.match(/^([*_ \n]+)$/g)) return;
+
+            setTimeout(function () {
+              quill.deleteText(startIndex, annotatedText.length);
+              quill.insertText(startIndex, matchedText, {
+                bold: true,
+                italic: true
+              });
+              quill.format("bold", false);
+            }, 0);
+          }
+        },
+        bold: {
+          name: "bold",
+          pattern: /(?:\*|_){2}(.+?)(?:\*|_){2}/g,
+          action: function action(quill, text, selection, pattern, lineStart) {
+            var match = pattern.exec(text);
+
+            var annotatedText = match[0];
+            var matchedText = match[1];
+            var startIndex = lineStart + match.index;
+
+            if (text.match(/^([*_ \n]+)$/g)) return;
+
+            setTimeout(function () {
+              quill.deleteText(startIndex, annotatedText.length);
+              quill.insertText(startIndex, matchedText, { bold: true });
+              quill.format("bold", false);
+            }, 0);
+          }
+        },
+        italic: {
+          name: "italic",
+          pattern: /(?:\*|_){1}(.+?)(?:\*|_){1}/g,
+          action: function action(quill, text, selection, pattern, lineStart) {
+            var match = pattern.exec(text);
+
+            var annotatedText = match[0];
+            var matchedText = match[1];
+            var startIndex = lineStart + match.index;
+
+            if (text.match(/^([*_ \n]+)$/g)) return;
+
+            setTimeout(function () {
+              quill.deleteText(startIndex, annotatedText.length);
+              quill.insertText(startIndex, matchedText, { italic: true });
+              quill.format("italic", false);
+            }, 0);
+          }
+        },
+        strikethrough: {
+          name: "strikethrough",
+          pattern: /(?:~~)(.+?)(?:~~)/g,
+          action: function action(quill, text, selection, pattern, lineStart) {
+            var match = pattern.exec(text);
+
+            var annotatedText = match[0];
+            var matchedText = match[1];
+            var startIndex = lineStart + match.index;
+
+            if (text.match(/^([*_ \n]+)$/g)) return;
+
+            setTimeout(function () {
+              quill.deleteText(startIndex, annotatedText.length);
+              quill.insertText(startIndex, matchedText, { strike: true });
+              quill.format("strike", false);
+            }, 0);
+          }
+        },
+        code: {
+          name: "code",
+          pattern: /(?:`)(.+?)(?:`)/g,
+          action: function action(quill, text, selection, pattern, lineStart) {
+            var match = pattern.exec(text);
+
+            var annotatedText = match[0];
+            var matchedText = match[1];
+            var startIndex = lineStart + match.index;
+
+            if (text.match(/^([*_ \n]+)$/g)) return;
+
+            setTimeout(function () {
+              quill.deleteText(startIndex, annotatedText.length);
+              quill.insertText(startIndex, matchedText, { code: true });
+              quill.format("code", false);
+              quill.insertText(quill.getSelection(), " ");
+            }, 0);
+          }
+        },
+        hr: {
+          name: "hr",
+          pattern: /^([-*]\s?){3}/g,
+          action: function action(quill, text, selection) {
+            var startIndex = selection.index - text.length;
+            setTimeout(function () {
+              quill.deleteText(startIndex, text.length);
+
+              quill.insertEmbed(startIndex + 1, "hr", true, Quill.sources.USER);
+              quill.insertText(startIndex + 2, "\n", Quill.sources.SILENT);
+              quill.setSelection(startIndex + 2, Quill.sources.SILENT);
+            }, 0);
+          }
+        },
+        "plus-ul": {
+          name: "plus-ul",
+          // Quill 1.3.5 already treat * as another trigger for bullet lists
+          pattern: /^\+\s$/g,
+          action: function action(quill, text, selection, pattern) {
+            setTimeout(function () {
+              quill.formatLine(selection.index, 1, "list", "unordered");
+              quill.deleteText(selection.index - 2, 2);
+            }, 0);
+          }
+        },
+        image: {
+          name: "image",
+          pattern: /(?:!\[(.+?)\])(?:\((.+?)\))/g,
+          action: function action(quill, text, selection, pattern) {
+            var startIndex = text.search(pattern);
+            var matchedText = text.match(pattern)[0];
+            // const hrefText = text.match(/(?:!\[(.*?)\])/g)[0]
+            var hrefLink = text.match(/(?:\((.*?)\))/g)[0];
+            var start = selection.index - matchedText.length - 1;
+            if (startIndex !== -1) {
+              setTimeout(function () {
+                quill.deleteText(start, matchedText.length);
+                quill.insertEmbed(start, "image", hrefLink.slice(1, hrefLink.length - 1));
+              }, 0);
+            }
+          }
+        },
+        link: {
+          name: "link",
+          pattern: /(?:\[(.+?)\])(?:\((.+?)\))/g,
+          action: function action(quill, text, selection, pattern) {
+            var startIndex = text.search(pattern);
+            var matchedText = text.match(pattern)[0];
+            var hrefText = text.match(/(?:\[(.*?)\])/g)[0];
+            var hrefLink = text.match(/(?:\((.*?)\))/g)[0];
+            var start = selection.index - matchedText.length - 1;
+            if (startIndex !== -1) {
+              setTimeout(function () {
+                quill.deleteText(start, matchedText.length);
+                quill.insertText(start, hrefText.slice(1, hrefText.length - 1), "link", hrefLink.slice(1, hrefLink.length - 1));
+              }, 0);
+            }
+          }
+        }
+      };
 
       /***/
     }]

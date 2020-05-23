@@ -33,21 +33,32 @@ To incorporate the code into your codebase, simply download the markdownShortcut
 ### ES6
 
 ```js
-import Quill from 'quill';
-import MarkdownShortcuts from 'quill-markdown-shortcuts';
+import Quill from "quill";
+import MarkdownShortcuts from "quill-markdown-shortcuts";
 
-Quill.register('modules/markdownShortcuts', MarkdownShortcuts);
+Quill.register("modules/markdownShortcuts", MarkdownShortcuts);
 
-const quill = new Quill('#editor', {
-  theme: 'snow',
+const quill = new Quill("#editor", {
+  theme: "snow",
   // All you need to do to enable the module is to add a modules key
   // to your quill configuration, and add markdownShortcuts with an
   // empty object.
   // There are currently no options to set.
   modules: {
-    markdownShortcuts: {}
-  }
+    markdownShortcuts: {},
+  },
 });
+```
+
+### Options
+
+** includeFormats **
+Used to limit the formats available through markdown commands.
+
+```javascript
+markdownShortcuts: {
+  includeFormats: ["blockquote", "header"];
+}
 ```
 
 ### Script Tag
@@ -58,15 +69,15 @@ const quill = new Quill('#editor', {
     <div id="editor"></div>
     <script src="/path/to/node_modules/quill-markdown-shortcuts/dist/markdownShortcuts.js"></script>
     <script>
-      var quill = new Quill('#editor', {
-        theme: 'snow',
+      var quill = new Quill("#editor", {
+        theme: "snow",
         // All you need to do to enable the module is to add a modules key
         // to your quill configuration, and add markdownShortcuts with an
         // empty object.
         // There are currently no options to set.
         modules: {
-          markdownShortcuts: {}
-        }
+          markdownShortcuts: {},
+        },
       });
     </script>
   </div>
@@ -80,4 +91,3 @@ Issues and pull requests are welcome! Please [open an issue](https://github.com/
 ## Building the module and examples
 
 To build the module and the example bundles, please run `npm run build` and include the bundles in your commit. Thanks!
-

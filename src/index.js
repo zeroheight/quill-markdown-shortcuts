@@ -101,14 +101,7 @@ class MarkdownShortcuts {
           if (!this.options.shouldFormat(match)) return;
 
           // We need to replace only matched text not the whole line
-          match.action(
-            this.quill,
-            text,
-            selection,
-            match.pattern,
-            lineStart,
-            options.shouldFormat
-          );
+          match.action(this.quill, text, selection, match.pattern, lineStart);
           return;
         }
       }
@@ -129,14 +122,7 @@ class MarkdownShortcuts {
           // Check if the match is allowed
           if (!this.options.shouldFormat(match)) return;
 
-          match.action(
-            this.quill,
-            text,
-            selection,
-            match.pattern,
-            lineStart,
-            options.shouldFormat
-          );
+          match.action(this.quill, text, selection, match.pattern, lineStart);
           return;
         }
       }

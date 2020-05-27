@@ -97,6 +97,9 @@ class MarkdownShortcuts {
       for (let match of this.matches) {
         const matchedText = text.match(match.pattern);
         if (matchedText) {
+          // Check if the match is allowed
+          if (!this.options.shouldFormat(match)) return;
+
           // We need to replace only matched text not the whole line
           match.action(
             this.quill,
@@ -123,6 +126,9 @@ class MarkdownShortcuts {
       for (let match of this.matches) {
         const matchedText = text.match(match.pattern);
         if (matchedText) {
+          // Check if the match is allowed
+          if (!this.options.shouldFormat(match)) return;
+
           match.action(
             this.quill,
             text,

@@ -98,7 +98,14 @@ class MarkdownShortcuts {
         const matchedText = text.match(match.pattern);
         if (matchedText) {
           // We need to replace only matched text not the whole line
-          match.action(this.quill, text, selection, match.pattern, lineStart);
+          match.action(
+            this.quill,
+            text,
+            selection,
+            match.pattern,
+            lineStart,
+            options.shouldFormat
+          );
           return;
         }
       }
@@ -116,7 +123,14 @@ class MarkdownShortcuts {
       for (let match of this.matches) {
         const matchedText = text.match(match.pattern);
         if (matchedText) {
-          match.action(this.quill, text, selection, match.pattern, lineStart);
+          match.action(
+            this.quill,
+            text,
+            selection,
+            match.pattern,
+            lineStart,
+            options.shouldFormat
+          );
           return;
         }
       }

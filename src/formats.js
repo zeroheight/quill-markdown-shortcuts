@@ -2,7 +2,11 @@ export default {
   header: {
     name: "header",
     pattern: /^(#){1,6}\s/g,
-    action: (quill, text, selection, pattern) => {
+    action: (quill, text, selection, pattern, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       var match = pattern.exec(text);
       if (!match) return;
       const size = match[0].length;
@@ -16,7 +20,11 @@ export default {
   blockquote: {
     name: "blockquote",
     pattern: /^(>)\s/g,
-    action: (quill, text, selection) => {
+    action: (quill, text, selection, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       // Need to defer this action https://github.com/quilljs/quill/issues/1134
       setTimeout(() => {
         quill.formatLine(selection.index, 1, "blockquote", true);
@@ -27,7 +35,11 @@ export default {
   "code-block": {
     name: "code-block",
     pattern: /^`{3}(?:\s|\n)/g,
-    action: (quill, text, selection) => {
+    action: (quill, text, selection, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       // Need to defer this action https://github.com/quilljs/quill/issues/1134
       setTimeout(() => {
         quill.formatLine(selection.index, 1, "code-block", true);
@@ -38,7 +50,11 @@ export default {
   bolditalic: {
     name: "bolditalic",
     pattern: /(?:\*|_){3}(.+?)(?:\*|_){3}/g,
-    action: (quill, text, selection, pattern, lineStart) => {
+    action: (quill, text, selection, pattern, lineStart, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       let match = pattern.exec(text);
 
       const annotatedText = match[0];
@@ -60,7 +76,11 @@ export default {
   bold: {
     name: "bold",
     pattern: /(?:\*|_){2}(.+?)(?:\*|_){2}/g,
-    action: (quill, text, selection, pattern, lineStart) => {
+    action: (quill, text, selection, pattern, lineStart, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       let match = pattern.exec(text);
 
       const annotatedText = match[0];
@@ -79,7 +99,11 @@ export default {
   italic: {
     name: "italic",
     pattern: /(?:\*|_){1}(.+?)(?:\*|_){1}/g,
-    action: (quill, text, selection, pattern, lineStart) => {
+    action: (quill, text, selection, pattern, lineStart, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       let match = pattern.exec(text);
 
       const annotatedText = match[0];
@@ -98,7 +122,11 @@ export default {
   strikethrough: {
     name: "strikethrough",
     pattern: /(?:~~)(.+?)(?:~~)/g,
-    action: (quill, text, selection, pattern, lineStart) => {
+    action: (quill, text, selection, pattern, lineStart, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       let match = pattern.exec(text);
 
       const annotatedText = match[0];
@@ -117,7 +145,11 @@ export default {
   code: {
     name: "code",
     pattern: /(?:`)(.+?)(?:`)/g,
-    action: (quill, text, selection, pattern, lineStart) => {
+    action: (quill, text, selection, pattern, lineStart, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       let match = pattern.exec(text);
 
       const annotatedText = match[0];
@@ -137,7 +169,11 @@ export default {
   hr: {
     name: "hr",
     pattern: /^([-*]\s?){3}/g,
-    action: (quill, text, selection) => {
+    action: (quill, text, selection, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       const startIndex = selection.index - text.length;
       setTimeout(() => {
         quill.deleteText(startIndex, text.length);
@@ -152,7 +188,11 @@ export default {
     name: "plus-ul",
     // Quill 1.3.5 already treat * as another trigger for bullet lists
     pattern: /^\+\s$/g,
-    action: (quill, text, selection, pattern) => {
+    action: (quill, text, selection, pattern, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       setTimeout(() => {
         quill.formatLine(selection.index, 1, "list", "unordered");
         quill.deleteText(selection.index - 2, 2);
@@ -162,7 +202,11 @@ export default {
   image: {
     name: "image",
     pattern: /(?:!\[(.+?)\])(?:\((.+?)\))/g,
-    action: (quill, text, selection, pattern) => {
+    action: (quill, text, selection, pattern, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       const startIndex = text.search(pattern);
       const matchedText = text.match(pattern)[0];
       // const hrefText = text.match(/(?:!\[(.*?)\])/g)[0]
@@ -183,7 +227,11 @@ export default {
   link: {
     name: "link",
     pattern: /(?:\[(.+?)\])(?:\((.+?)\))/g,
-    action: (quill, text, selection, pattern) => {
+    action: (quill, text, selection, pattern, shouldFormat) => {
+      // used to allow for the formating to be disabled
+      // in certain contexts
+      if (!shouldFormat()) return;
+
       const startIndex = text.search(pattern);
       const matchedText = text.match(pattern)[0];
       const hrefText = text.match(/(?:\[(.*?)\])/g)[0];

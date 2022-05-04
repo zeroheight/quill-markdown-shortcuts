@@ -57,11 +57,7 @@ class MarkdownShortcuts {
     const includeRules = this.options.includeFormats || allRules;
 
     if (this.options.customFormats) {
-      Object
-        .entries(this.options.customFormats)
-        .forEach(([name, format]) => {
-          this.matches.push(format);
-        });
+      this.options.customFormats.forEach(format => this.matches.push(format));
     }
 
     includeRules.forEach((format) => {

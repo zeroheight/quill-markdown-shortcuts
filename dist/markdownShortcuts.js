@@ -151,6 +151,12 @@ var MarkdownShortcuts = function () {
 
     var includeRules = this.options.includeFormats || allRules;
 
+    if (this.options.customFormats) {
+      this.options.customFormats.forEach(function (format) {
+        return _this.matches.push(format);
+      });
+    }
+
     includeRules.forEach(function (format) {
       var formatDefinition = _formats2.default[format];
       if (format === "header" && _this.options.headerPattern) {

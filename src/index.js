@@ -56,6 +56,10 @@ class MarkdownShortcuts {
 
     const includeRules = this.options.includeFormats || allRules;
 
+    if (this.options.customFormats) {
+      this.options.customFormats.forEach(format => this.matches.push(format));
+    }
+
     includeRules.forEach((format) => {
       const formatDefinition = formats[format];
       if (format === "header" && this.options.headerPattern) {
